@@ -1,0 +1,121 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jul 24 16:50:30 2024
+
+@author: cornelissenl
+
+"""
+
+
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct 26 11:16:46 2023
+
+@author: cornelissenl
+"""
+
+
+import numpy as np
+from netCDF4 import Dataset
+from pyhdf.SD import SD, SDC
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import xarray as xr
+
+from glob import glob
+from datetime import datetime
+import os
+
+
+'''
+the start date of the ARTIST time series.
+Make sure you have daily files - otherwise update the timestamp in the dataset!
+'''
+startdate = '2023/1/1'
+start = pd.to_datetime(startdate)
+
+data_path = '/Users/cornelissenl/OneDrive - NIWA/Sediment_mooring/artist_data/'
+
+
+
+
+
+#%%
+# sorted makes sure that the files are in chronological order
+
+datafiles = sorted(glob(data_path+'asi*.hdf'))
+gridfile = sorted(glob(data_path+'Lon*.hdf'))
+
+
+ds = []
+
+for f in datafiles:
+    file = SD(f ,SDC.READ)
+    sds_obj = file.select('ASI Ice Concentration')
+    data = sds_obj.get() # get sds data
+    ds.append(data)
+
+#time,lat,lon
+
+grid = SD(gridfile[0], SDC.READ)
+Lon = grid.select('Longitudes').get()
+Lat = grid.select('Latitudes').get()
+
+#change lon from -180:180 to 0:360.
+Lon[np.where(Lon<0)]+=360
+
+#%% Make dataset
+# https://pyhogs.github.io/intro_netcdf4.html#:~:text=Open%2Fcreate%20a%20netCDF%20dataset.%20Define%20the%20dimensions%20of,dataset%20%28optional%20but%20recommended%29.%20Close%20the%20netCDF%20dataset.
+
+
+'''
+
+This code writes a netcdf file of the ARTIST data.
+it ASSUMES you made a timeseries with daily output.
+If not, you will need to update the time variable.
+
+It makes a variable for the Longitude, Latitude, Time and SeaIceConcentration
+
+'''
+
+
+time = np.arange(len(ds))
+
+#put in the path + filename of the dataset
+f = Dataset('C:/Users/cornelissenl/OneDrive - NIWA/Sediment_mooring/artist_data/Artist.nc','w', format='NETCDF4')
+
+f.createDimension('x',Lon.shape[0])
+f.createDimension('y', Lon.shape[1])
+f.createDimension('time', len(time))
+
+longitude = f.createVariable('Longitude', 'f4', ('y','x'))
+latitude = f.createVariable('Latitude', 'f4', ('y','x'))
+Time = f.createVariable('Time', 'i4', 'time')
+SIC = f.createVariable('SeaIceConcentration', 'f4', ('time', 'y', 'x'))
+
+
+longitude[:] = Lon #The "[:]" at the end of the variable instance is necessary
+latitude[:] = Lat
+Time[:] = time
+SIC[:] = ds
+
+f.description = "Sea Ice concentration from ARTIST data.seaice.uni-bremen"
+f.history = "Created " + datetime.today().strftime("%d/%m/%y")
+
+#Add local attributes to variable instances
+longitude.units = 'degrees east'
+latitude.units = 'degrees north'
+Time.units = 'days since ' + start.strftime("%d/%m/%y")
+SIC.units = '%'
+
+
+
+
+"""
+
+
+End
+
+
+"""
